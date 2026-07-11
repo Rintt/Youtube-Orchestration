@@ -1,16 +1,9 @@
-from googleapiclient.discovery import build
-from app.config import YOUTUBE_API_KEY
 from app.models.video import Video
 import html
 from app.util.logger import info, success, warning, error
 #import json 
-
-def get_youtube_client():
-    return build(
-        "youtube",
-        "v3",
-        developerKey=YOUTUBE_API_KEY,
-    )
+from youtube_transcript_api import YouTubeTranscriptApi
+from app.util.youtube_util import get_youtube_client
 
 def search_videos(query: str) -> list[Video]:
     youtube = get_youtube_client()

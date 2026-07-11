@@ -32,9 +32,24 @@ def initialize_database():
         comment_count INTEGER,
 
         transcript TEXT
-                   
+    )""")
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS comments (
 
+    comment_id TEXT PRIMARY KEY,
+
+    video_id TEXT,
+
+    author TEXT,
+
+    text TEXT,
+
+    published_at TEXT,
+
+    like_count INTEGER,
+
+    FOREIGN KEY(video_id) REFERENCES videos(video_id))
+    """
     )
-    """)
     conn.commit()
     conn.close()

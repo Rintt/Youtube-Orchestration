@@ -64,3 +64,16 @@ class VideoRepository:
             (transcript, video_id),
         )
         self.conn.commit()
+    def get_videos_missing_transcripts(self) -> list[Video]:
+        self.cursor.execute(
+            """
+            SELECT *
+            FROM videos
+            WHERE transcript IS NULL
+            OR transcript = ''
+            """
+        )
+
+        rows = self.cursor.fetchall()
+
+        return [Video(**dict(row)) for row in rows]
