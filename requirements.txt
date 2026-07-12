@@ -1,0 +1,6 @@
+mcp[cli]>=1.27,<2
+google-api-python-client
+youtube-transcript-api
+pydantic
+python-dotenv
+uvicorn

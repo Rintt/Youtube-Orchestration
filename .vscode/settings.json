@@ -1,4 +1,12 @@
 {
     "python-envs.defaultEnvManager": "ms-python.python:conda",
-    "python-envs.defaultPackageManager": "ms-python.python:conda"
+    "python-envs.defaultPackageManager": "ms-python.python:conda",
+    "mcp": {
+        "servers": {
+            "youtube": {
+                "command": "C:\\Users\\ufuka\\miniconda3\\envs\\youtuber\\python.exe",
+                "args": ["C:\\Users\\ufuka\\OneDrive\\Workspace\\Youtube-Orchestration\\server.py"]
+            }
+        }
+    }
 }

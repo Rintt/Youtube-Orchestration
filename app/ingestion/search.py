@@ -5,7 +5,7 @@ from app.util.logger import info, success, warning, error
 from youtube_transcript_api import YouTubeTranscriptApi
 from app.util.youtube_util import get_youtube_client
 
-def search_videos(query: str) -> list[Video]:
+def search_videos(query: str, max_results: int = 10) -> list[Video]:
     youtube = get_youtube_client()
     info(f"Searching YouTube for '{query}'...")
     videos = []
@@ -15,7 +15,7 @@ def search_videos(query: str) -> list[Video]:
             q=query,
             part="snippet",
             type="video",
-            maxResults=10,
+            maxResults=max_results,
         )
         .execute()
     )

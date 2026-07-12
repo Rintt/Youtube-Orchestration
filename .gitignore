@@ -218,3 +218,7 @@ __marimo__/
 .streamlit/secrets.toml
 
 .env
+
+cert.pem
+key.pem
+youtube.db
