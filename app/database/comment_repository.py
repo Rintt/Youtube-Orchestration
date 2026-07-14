@@ -9,6 +9,12 @@ class CommentRepository:
         self.conn = get_connection()
         self.cursor = self.conn.cursor()
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.close()
+
     def save(self, comment: Comment):
         self.cursor.execute(
             """
@@ -37,13 +43,17 @@ class CommentRepository:
             self.save(comment)
         success(f"Saved {len(comments)} comments.") 
 
-    def get_comments(self, video_id: str) -> list[Comment]:
+    def get_comments(self, video_id: str, limit: int | None = None) -> list[Comment]:
+        limit_clause = "" if limit is None else "LIMIT ?"
+        params = (video_id,) if limit is None else (video_id, limit)
         self.cursor.execute(
-            """
+            f"""
             SELECT * FROM comments 
             WHERE video_id = ?
-            """
-        , (video_id,))
+            {limit_clause}
+            """,
+            params,
+        )
         rows = self.cursor.fetchall()
 
         return [Comment(**dict(row)) for row in rows]

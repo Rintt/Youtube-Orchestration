@@ -4,6 +4,13 @@ class StatsRepository:
     def __init__(self):
             self.conn = get_connection()
             self.cursor = self.conn.cursor()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.close()
+
     def get_video_count(self):
         self.cursor.execute("SELECT COUNT(*) FROM videos")
         return self.cursor.fetchone()[0]

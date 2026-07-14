@@ -99,8 +99,8 @@ def tool_search_videos(query: str, max_results: int = 10) -> dict[str, Any]:
         max_results: Maximum number of results to return (default 10)
     """
     videos = search_videos(query, max_results=max_results)
-    repo = VideoRepository()
-    repo.save_many(videos)
+    with VideoRepository() as repo:
+        repo.save_many(videos)
     return {
         "query": query,
         "requested_max_results": max_results,
@@ -147,8 +147,8 @@ def tool_get_channel_videos(
         max_results: Maximum number of videos to fetch. If omitted, fetches all uploads.
     """
     videos = get_channel_videos(channel, max_results=max_results)
-    repo = VideoRepository()
-    repo.save_many(videos)
+    with VideoRepository() as repo:
+        repo.save_many(videos)
     return {
         "channel": channel,
         "requested_max_results": max_results,
@@ -164,15 +164,14 @@ def tool_get_video(video_id: str) -> dict[str, Any]:
     Args:
         video_id: YouTube video ID (e.g. "dQw4w9WgXcQ")
     """
-    repo = VideoRepository()
-    videos = repo.get_all()
-    for video in videos:
-        if video.video_id == video_id:
-            return {
-                "video_id": video_id,
-                "found": True,
-                "video": _video_payload(video),
-            }
+    with VideoRepository() as repo:
+        video = repo.get_by_id(video_id)
+    if video:
+        return {
+            "video_id": video_id,
+            "found": True,
+            "video": _video_payload(video),
+        }
     return {
         "video_id": video_id,
         "found": False,
@@ -191,10 +190,9 @@ def tool_get_transcript(
     Args:
         video_id: YouTube video ID
     """
-    repo = VideoRepository()
-    videos = repo.get_all()
-    for video in videos:
-        if video.video_id == video_id and video.transcript:
+    with VideoRepository() as repo:
+        video = repo.get_by_id(video_id)
+        if video and video.transcript:
             return _transcript_payload(
                 video_id,
                 video.transcript,
@@ -203,19 +201,19 @@ def tool_get_transcript(
                 include_full_text=include_full_text,
             )
 
-    transcript = get_transcript(video_id)
-    if transcript:
-        repo.update_transcript(video_id, transcript)
-    else:
-        return {
-            "video_id": video_id,
-            "source": "youtube",
-            "available": False,
-            "length": 0,
-            "text": "",
-            "truncated": False,
-            "error": "No transcript available.",
-        }
+        transcript = get_transcript(video_id)
+        if transcript:
+            repo.update_transcript(video_id, transcript)
+        else:
+            return {
+                "video_id": video_id,
+                "source": "youtube",
+                "available": False,
+                "length": 0,
+                "text": "",
+                "truncated": False,
+                "error": "No transcript available.",
+            }
     return _transcript_payload(
         video_id,
         transcript,
@@ -233,21 +231,20 @@ def tool_get_comments(video_id: str, max_comments: int = 50) -> dict[str, Any]:
         video_id: YouTube video ID
         max_comments: Maximum number of comments to return (default 50)
     """
-    comment_repo = CommentRepository()
-    existing = comment_repo.get_comments(video_id)
-    if existing:
-        comments = existing[:max_comments]
-        return {
-            "video_id": video_id,
-            "source": "cache",
-            "requested_max_comments": max_comments,
-            "count": len(comments),
-            "comments": [_comment_payload(comment) for comment in comments],
-        }
+    with CommentRepository() as comment_repo:
+        existing = comment_repo.get_comments(video_id, limit=max_comments)
+        if len(existing) >= max_comments:
+            return {
+                "video_id": video_id,
+                "source": "cache",
+                "requested_max_comments": max_comments,
+                "count": len(existing),
+                "comments": [_comment_payload(comment) for comment in existing],
+            }
 
-    comments = get_comments(video_id, max_comments=max_comments)
-    comment_repo.save_many(comments)
-    comments = comments[:max_comments]
+        comments = get_comments(video_id, max_comments=max_comments)
+        comment_repo.save_many(comments)
+        comments = comment_repo.get_comments(video_id, limit=max_comments)
     return {
         "video_id": video_id,
         "source": "youtube",
@@ -264,15 +261,13 @@ def tool_ingest_video(video_id: str) -> dict[str, Any]:
     Args:
         video_id: YouTube video ID
     """
-    repo = VideoRepository()
-    comment_repo = CommentRepository()
+    with VideoRepository() as repo, CommentRepository() as comment_repo:
+        transcript = get_transcript(video_id)
+        if transcript:
+            repo.update_transcript(video_id, transcript)
 
-    transcript = get_transcript(video_id)
-    if transcript:
-        repo.update_transcript(video_id, transcript)
-
-    comments = get_comments(video_id)
-    comment_repo.save_many(comments)
+        comments = get_comments(video_id)
+        comment_repo.save_many(comments)
 
     return {
         "video_id": video_id,
@@ -289,8 +284,8 @@ def tool_ingest_video(video_id: str) -> dict[str, Any]:
 @mcp.tool(name="get_stats", structured_output=True)
 def tool_get_stats() -> dict[str, Any]:
     """Get summary statistics of the YouTube database."""
-    stats = StatsRepository()
-    summary = stats.summary()
+    with StatsRepository() as stats:
+        summary = stats.summary()
     return {
         "videos": summary["video_count"],
         "channels": summary["channel_count"],
