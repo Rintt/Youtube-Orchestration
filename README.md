@@ -30,6 +30,14 @@ python server.py streamable-http
 
 Starts a server at `http://localhost:8000/mcp`.
 
+## Tests
+
+```bash
+python -m unittest discover -s tests
+```
+
+The MCP tests start a local test server, connect with an MCP client, and mock YouTube API calls so they do not require `YOUTUBE_API_KEY` or spend quota.
+
 ## Claude Desktop Configuration
 
 Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
