@@ -4,3 +4,6 @@ youtube-transcript-api
 pydantic
 python-dotenv
 uvicorn
+sentence-transformers
+faiss-cpu
+numpy

@@ -11,6 +11,7 @@ from app.ingestion.search import search_videos
 from app.ingestion.channel import resolve_channel, get_channel_videos
 from app.ingestion.transcript import get_transcript
 from app.ingestion.comments import get_comments
+from app.models.chunk import Chunk
 
 initialize_database()
 
@@ -88,6 +89,27 @@ def _transcript_payload(
         "text": text,
         "truncated": bool(transcript) and len(text) < len(transcript),
     }
+
+
+def _search_video_transcript_chunks(
+    video_id: str,
+    transcript: str,
+    query: str,
+    k: int,
+) -> list[tuple[Chunk, float]]:
+    from app.embeddings.chunking import chunk_text
+    from app.embeddings.embedder import Embedder
+    from app.embeddings.vector_store import VectorStore
+
+    chunks = chunk_text(video_id, transcript)
+    if not chunks:
+        return []
+
+    embedder = Embedder()
+    store = VectorStore(embedder)
+    embeddings = embedder.embed_many([chunk.text for chunk in chunks])
+    store.add(chunks, embeddings)
+    return store.search(query, k=k)
 
 
 @mcp.tool(name="search_videos", structured_output=True)
@@ -251,6 +273,78 @@ def tool_get_comments(video_id: str, max_comments: int = 50) -> dict[str, Any]:
         "requested_max_comments": max_comments,
         "count": len(comments),
         "comments": [_comment_payload(comment) for comment in comments],
+    }
+
+
+@mcp.tool(name="search_video_transcript", structured_output=True)
+def tool_search_video_transcript(
+    video_id: str,
+    query: str,
+    k: int = 5,
+    max_chars: int = 1200,
+) -> dict[str, Any]:
+    """Semantically search one video's transcript for chunks relevant to a query.
+
+    Args:
+        video_id: YouTube video ID
+        query: Natural-language question or search query
+        k: Maximum number of transcript chunks to return
+        max_chars: Maximum characters to return per chunk
+    """
+    k = max(1, min(k, 20))
+    max_chars = max(100, min(max_chars, 4000))
+
+    with VideoRepository() as repo:
+        video = repo.get_by_id(video_id)
+        if not video:
+            return {
+                "video_id": video_id,
+                "query": query,
+                "found": False,
+                "count": 0,
+                "results": [],
+                "error": f"Video '{video_id}' not found in database.",
+            }
+
+        transcript = video.transcript
+        source = "cache"
+        if not transcript:
+            transcript = get_transcript(video_id)
+            source = "youtube"
+            if transcript:
+                repo.update_transcript(video_id, transcript)
+
+    if not transcript:
+        return {
+            "video_id": video_id,
+            "query": query,
+            "found": True,
+            "source": source,
+            "available": False,
+            "count": 0,
+            "results": [],
+            "error": "No transcript available.",
+        }
+
+    results = _search_video_transcript_chunks(video_id, transcript, query, k)
+    return {
+        "video_id": video_id,
+        "url": f"https://www.youtube.com/watch?v={video_id}",
+        "query": query,
+        "found": True,
+        "source": source,
+        "available": True,
+        "requested_k": k,
+        "count": len(results),
+        "results": [
+            {
+                "chunk_id": chunk.chunk_id,
+                "chunk_index": chunk.index,
+                "score": score,
+                "text": _truncate_text(chunk.text, max_chars),
+            }
+            for chunk, score in results
+        ],
     }
 
 

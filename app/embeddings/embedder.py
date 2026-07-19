@@ -5,8 +5,7 @@ class Embedder:
 
         self.model = SentenceTransformer(
             "BAAI/bge-small-en-v1.5",
-            device="cuda",
-)
+        )
 
     def embed(
         self,

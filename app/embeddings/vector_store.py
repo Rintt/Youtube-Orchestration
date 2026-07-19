@@ -21,6 +21,9 @@ class VectorStore:
         embeddings: np.ndarray,
     ):
 
+        if not chunks:
+            return
+
         if self.index is None:
 
             dimension = embeddings.shape[1]
@@ -36,6 +39,9 @@ class VectorStore:
         query: str,
         k: int = 5,
     ) -> list[tuple[Chunk, float]]:
+
+        if self.index is None:
+            return []
 
         query_embedding = self.embedder.embed(query)
 

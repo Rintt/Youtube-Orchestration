@@ -13,6 +13,7 @@ from mcp import ClientSession
 from mcp.client.streamable_http import streamable_http_client
 
 from app.database import database
+from app.models.chunk import Chunk
 from app.models.comment import Comment
 from app.models.video import Video
 
@@ -89,6 +90,7 @@ class McpServerClientTest(unittest.IsolatedAsyncioTestCase):
                 "get_video",
                 "get_transcript",
                 "get_comments",
+                "search_video_transcript",
                 "ingest_video",
                 "get_stats",
             },
@@ -228,6 +230,51 @@ class McpServerClientTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(result["count"], 2)
 
         self.assertEqual(get_comments.call_count, 2)
+
+    async def test_search_video_transcript_uses_cached_transcript(self):
+        video = Video(
+            video_id="semantic-video-1",
+            title="Semantic Search Video",
+            channel="Test Channel",
+            description="A video with a transcript",
+            published_at="2026-01-03T00:00:00Z",
+            transcript="Python is often recommended to beginners because it is readable.",
+        )
+        chunk = Chunk(
+            chunk_id="semantic-video-1_0",
+            video_id="semantic-video-1",
+            index=0,
+            text="Python is often recommended to beginners because it is readable.",
+        )
+
+        with patch.object(self.server_module, "search_videos", return_value=[video]):
+            await self.call_tool(
+                "search_videos",
+                {"query": "semantic test", "max_results": 1},
+            )
+
+        with patch.object(
+            self.server_module,
+            "_search_video_transcript_chunks",
+            return_value=[(chunk, 0.82)],
+        ) as search_chunks, patch.object(self.server_module, "get_transcript") as get_transcript:
+            result = await self.call_tool(
+                "search_video_transcript",
+                {
+                    "video_id": "semantic-video-1",
+                    "query": "best beginner programming language",
+                    "k": 3,
+                },
+            )
+
+        self.assertTrue(result["found"])
+        self.assertTrue(result["available"])
+        self.assertEqual(result["source"], "cache")
+        self.assertEqual(result["count"], 1)
+        self.assertEqual(result["results"][0]["chunk_id"], "semantic-video-1_0")
+        self.assertEqual(result["results"][0]["score"], 0.82)
+        search_chunks.assert_called_once()
+        get_transcript.assert_not_called()
 
     async def test_ingest_video_and_stats(self):
         comments = [
