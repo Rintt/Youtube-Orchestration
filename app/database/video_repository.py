@@ -88,6 +88,69 @@ class VideoRepository:
             return None
         return _video_from_row(row)
 
+    def get_channels_matching(self, query: str, limit: int = 10) -> list[str]:
+        query = query.strip().lower()
+        if not query:
+            return []
+
+        self.cursor.execute(
+            """
+            SELECT DISTINCT channel
+            FROM videos
+            WHERE channel IS NOT NULL
+            AND channel != ''
+            ORDER BY channel
+            """
+        )
+        channels = [row["channel"] for row in self.cursor.fetchall()]
+
+        exact_matches = [
+            channel for channel in channels
+            if channel.lower() == query
+        ]
+        partial_matches = [
+            channel for channel in channels
+            if query in channel.lower() and channel not in exact_matches
+        ]
+
+        return (exact_matches + partial_matches)[:limit]
+
+    def get_channel_videos(self, channel: str, limit: int | None = None) -> list[Video]:
+        query = """
+            SELECT *
+            FROM videos
+            WHERE channel = ?
+            ORDER BY view_count DESC, like_count DESC, published_at DESC
+        """
+        params: tuple = (channel,)
+        if limit is not None:
+            query += " LIMIT ?"
+            params = (channel, limit)
+
+        self.cursor.execute(query, params)
+        rows = self.cursor.fetchall()
+        return [_video_from_row(row) for row in rows]
+
+    def get_channel_top_videos_with_transcripts(
+        self,
+        channel: str,
+        limit: int,
+    ) -> list[Video]:
+        self.cursor.execute(
+            """
+            SELECT *
+            FROM videos
+            WHERE channel = ?
+            AND transcript IS NOT NULL
+            AND transcript != ''
+            ORDER BY view_count DESC, like_count DESC, published_at DESC
+            LIMIT ?
+            """,
+            (channel, limit),
+        )
+        rows = self.cursor.fetchall()
+        return [_video_from_row(row) for row in rows]
+
     def update_transcript(
         self,
         video_id: str,

@@ -91,6 +91,41 @@ def _transcript_payload(
     }
 
 
+def _channel_query_candidates(channel: str) -> list[str]:
+    raw = channel.strip()
+    candidates = [raw]
+
+    cleaned = raw.rstrip("/")
+    if "/" in cleaned:
+        parts = [part for part in cleaned.split("/") if part]
+        if parts and parts[-1] == "videos":
+            parts = parts[:-1]
+        if parts:
+            candidates.append(parts[-1])
+
+    for candidate in list(candidates):
+        if candidate.startswith("@"):
+            candidates.append(candidate[1:])
+
+    for candidate in list(candidates):
+        normalized = candidate.replace("_", " ").replace("-", " ")
+        candidates.append(normalized)
+        lowered = normalized.lower()
+        if lowered.endswith("gruppe"):
+            candidates.append(normalized[:-6] + "group")
+            candidates.append(normalized[:-6] + " group")
+
+    unique = []
+    seen = set()
+    for candidate in candidates:
+        candidate = candidate.strip()
+        key = candidate.lower()
+        if candidate and key not in seen:
+            seen.add(key)
+            unique.append(candidate)
+    return unique
+
+
 def _search_video_transcript_chunks(
     video_id: str,
     transcript: str,
@@ -198,6 +233,90 @@ def tool_get_video(video_id: str) -> dict[str, Any]:
         "video_id": video_id,
         "found": False,
         "error": f"Video '{video_id}' not found in database.",
+    }
+
+
+@mcp.tool(name="get_channel_top_transcripts_from_db", structured_output=True)
+def tool_get_channel_top_transcripts_from_db(
+    channel: str,
+    top_n: int = 3,
+    include_full_text: bool = False,
+    max_chars: int = 4000,
+    fallback_to_available_transcripts: bool = True,
+) -> dict[str, Any]:
+    """Get a channel's top videos and cached transcripts using only the database.
+
+    Args:
+        channel: Cached channel name, handle, or URL to match against database rows
+        top_n: Number of top videos/transcripts to return
+        include_full_text: Return full transcript text instead of truncating
+        max_chars: Maximum transcript characters when include_full_text is false
+        fallback_to_available_transcripts: If top videos lack transcripts, use next cached transcripts
+    """
+    top_n = max(1, min(top_n, 20))
+    max_chars = max(100, min(max_chars, 50000))
+
+    with VideoRepository() as repo:
+        matched_channels = []
+        for candidate in _channel_query_candidates(channel):
+            for match in repo.get_channels_matching(candidate):
+                if match not in matched_channels:
+                    matched_channels.append(match)
+
+        if not matched_channels:
+            return {
+                "source": "database",
+                "channel_input": channel,
+                "found": False,
+                "matched_channels": [],
+                "count": 0,
+                "actual_top_videos": [],
+                "transcript_videos": [],
+                "error": f"No cached channel matched '{channel}'.",
+            }
+
+        matched_channel = matched_channels[0]
+        actual_top_videos = repo.get_channel_videos(matched_channel, limit=top_n)
+
+        if fallback_to_available_transcripts:
+            transcript_videos = repo.get_channel_top_videos_with_transcripts(
+                matched_channel,
+                limit=top_n,
+            )
+        else:
+            transcript_videos = [
+                video for video in actual_top_videos
+                if video.transcript
+            ]
+
+    return {
+        "source": "database",
+        "channel_input": channel,
+        "found": True,
+        "matched_channel": matched_channel,
+        "matched_channels": matched_channels,
+        "requested_top_n": top_n,
+        "fallback_to_available_transcripts": fallback_to_available_transcripts,
+        "actual_top_count": len(actual_top_videos),
+        "actual_top_videos": [_video_payload(video) for video in actual_top_videos],
+        "missing_top_transcripts": [
+            _video_payload(video) for video in actual_top_videos
+            if not video.transcript
+        ],
+        "transcript_count": len(transcript_videos),
+        "transcript_videos": [
+            {
+                "video": _video_payload(video),
+                "transcript": _transcript_payload(
+                    video.video_id,
+                    video.transcript,
+                    source="database",
+                    max_chars=max_chars,
+                    include_full_text=include_full_text,
+                ),
+            }
+            for video in transcript_videos
+        ],
     }
 
 
